@@ -10,6 +10,7 @@ export default function ReceiptModal({
   tableCharge,
   itemsTotal,
   grandTotal,
+  staffName,
   closing,
   onConfirm,
   onCancel,
@@ -20,6 +21,7 @@ export default function ReceiptModal({
   tableCharge: number;
   itemsTotal: number;
   grandTotal: number;
+  staffName: string | null;
   closing: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -29,7 +31,6 @@ export default function ReceiptModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-neutral-900 shadow-2xl">
-        {/* Хэвлэгдэх хэсэг */}
         <div id="receipt" className="p-6">
           <div className="text-center">
             <div className="text-2xl">🎱</div>
@@ -44,6 +45,12 @@ export default function ReceiptModal({
               <span className="text-neutral-500">Ширээ</span>
               <span className="font-medium">{table.name}</span>
             </div>
+            {staffName && (
+              <div className="flex justify-between">
+                <span className="text-neutral-500">Ажилтан</span>
+                <span className="font-medium">{staffName}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-neutral-500">Тоглосон цаг</span>
               <span className="font-medium">{formatDuration(seconds)}</span>
@@ -84,7 +91,6 @@ export default function ReceiptModal({
           </p>
         </div>
 
-        {/* Товчнууд (хэвлэхэд харагдахгүй) */}
         <div className="flex gap-2 border-t border-neutral-200 p-4 print:hidden">
           <button
             onClick={() => window.print()}
@@ -109,7 +115,6 @@ export default function ReceiptModal({
         </div>
       </div>
 
-      {/* Зөвхөн receipt-ийг хэвлэх print стиль */}
       <style jsx global>{`
         @media print {
           body * {

@@ -29,6 +29,7 @@ export default async function TableDetailPage({
 
   let session: Session | null = null;
   let items: SessionItem[] = [];
+  let staffName: string | null = null;
 
   if (table.current_session_id) {
     const { data: s } = await supabase
@@ -45,6 +46,15 @@ export default async function TableDetailPage({
         .eq("session_id", session.id)
         .order("created_at", { ascending: true });
       items = (it ?? []) as SessionItem[];
+
+      if (session.staff_id) {
+        const { data: st } = await supabase
+          .from("staff")
+          .select("name")
+          .eq("id", session.staff_id)
+          .single();
+        staffName = st?.name ?? null;
+      }
     }
   }
 
@@ -54,6 +64,7 @@ export default async function TableDetailPage({
       products={(products ?? []) as Product[]}
       initialSession={session}
       initialItems={items}
+      staffName={staffName}
     />
   );
 }

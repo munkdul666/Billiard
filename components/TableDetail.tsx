@@ -19,11 +19,13 @@ export default function TableDetail({
   products,
   initialSession,
   initialItems,
+  staffName,
 }: {
   table: Table;
   products: Product[];
   initialSession: Session | null;
   initialItems: SessionItem[];
+  staffName: string | null;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -42,7 +44,6 @@ export default function TableDetail({
   const isFixed =
     session?.billing_mode === "fixed" && !!session?.planned_minutes;
 
-  // Live timer
   useEffect(() => {
     if (!isActive) return;
     const t = setInterval(() => setTick((x) => x + 1), 1000);
@@ -90,6 +91,11 @@ export default function TableDetail({
       .single();
 
     if (!error && data) {
+      // Агуулахаас хасах
+      await supabase
+        .from("products")
+        .update({ stock: Math.max(0, product.stock - qty) })
+        .eq("id", product.id);
       setItems((prev) => [...prev, data as SessionItem]);
       setQty(1);
     }
@@ -139,15 +145,14 @@ export default function TableDetail({
     <div>
       <Link
         href="/"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-neutral-400 hover:text-neutral-200"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200"
       >
         ← Буцах
       </Link>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Зүүн тал */}
         <div className="space-y-6">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+          <div className="card p-6">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="flex items-center gap-2 text-xl font-bold">
@@ -158,28 +163,28 @@ export default function TableDetail({
                     </span>
                   )}
                 </h1>
-                <p className="text-sm text-neutral-400">
+                <p className="text-sm text-slate-400">
                   Тариф: {formatMNT(table.hourly_rate)}/цаг
-                  {isFixed &&
-                    ` · ${session!.planned_minutes! / 60} цагийн багц`}
+                  {isFixed && ` · ${session!.planned_minutes! / 60} цагийн багц`}
+                  {staffName && ` · Ажилтан: ${staffName}`}
                 </p>
               </div>
-              <span className="text-5xl font-black text-neutral-700">
+              <span className="text-5xl font-black text-white/10">
                 {table.number}
               </span>
             </div>
 
             {isActive ? (
               <div className="mt-6 grid grid-cols-2 gap-4">
-                <div className="rounded-xl bg-neutral-800 p-4">
-                  <div className="text-xs text-neutral-400">Тоглосон цаг</div>
+                <div className="rounded-xl bg-white/5 p-4">
+                  <div className="text-xs text-slate-400">Тоглосон цаг</div>
                   <div className="tabular mt-1 text-3xl font-bold">
                     {formatDuration(seconds)}
                   </div>
                   {isFixed && (
                     <div
                       className={`mt-1 text-sm font-semibold ${
-                        overtime ? "text-red-400" : "text-neutral-300"
+                        overtime ? "text-rose-400" : "text-slate-300"
                       }`}
                     >
                       {overtime ? "⚠️ Хэтэрсэн " : "Үлдсэн "}
@@ -187,21 +192,21 @@ export default function TableDetail({
                     </div>
                   )}
                 </div>
-                <div className="rounded-xl bg-neutral-800 p-4">
-                  <div className="text-xs text-neutral-400">Ширээний цэнэ</div>
-                  <div className="mt-1 text-3xl font-bold text-green-400">
+                <div className="rounded-xl bg-white/5 p-4">
+                  <div className="text-xs text-slate-400">Ширээний цэнэ</div>
+                  <div className="mt-1 text-3xl font-bold text-emerald-400">
                     {formatMNT(tableCharge)}
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="mt-6 rounded-xl bg-neutral-800 p-4 text-sm text-neutral-400">
+              <p className="mt-6 rounded-xl bg-white/5 p-4 text-sm text-slate-400">
                 Энэ ширээ идэвхтэй сесстэй биш байна.
               </p>
             )}
 
             {overtime && (
-              <div className="mt-4 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">
+              <div className="mt-4 rounded-xl border border-rose-800 bg-rose-950/40 px-4 py-3 text-sm text-rose-300">
                 ⚠️ Захиалсан цаг дууссан. Тоолуур үргэлжилж, илүү цагийг тарифаар
                 нэмж тооцож байна.
               </div>
@@ -209,17 +214,17 @@ export default function TableDetail({
           </div>
 
           {isActive && (
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+            <div className="card p-6">
               <h2 className="mb-4 font-semibold">Бараа нэмэх</h2>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <select
                   value={selectedProduct}
                   onChange={(e) => setSelectedProduct(e.target.value)}
-                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-green-600"
+                  className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-violet-500"
                 >
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} — {formatMNT(p.price)}
+                      {p.name} — {formatMNT(p.price)} (үлд: {p.stock})
                     </option>
                   ))}
                 </select>
@@ -230,11 +235,11 @@ export default function TableDetail({
                   onChange={(e) =>
                     setQty(Math.max(1, parseInt(e.target.value) || 1))
                   }
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-green-600 sm:w-20"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-violet-500 sm:w-20"
                 />
                 <button
                   onClick={addItem}
-                  className="rounded-lg bg-green-600 px-5 py-2 font-semibold text-white transition hover:bg-green-500"
+                  className="rounded-lg bg-violet-600 px-5 py-2 font-semibold text-white transition hover:bg-violet-500"
                 >
                   Нэмэх
                 </button>
@@ -243,22 +248,21 @@ export default function TableDetail({
           )}
         </div>
 
-        {/* Баруун тал */}
-        <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
+        <div className="card space-y-4 p-6">
           <h2 className="font-semibold">Захиалга</h2>
 
           {items.length === 0 ? (
-            <p className="text-sm text-neutral-500">Бараа нэмэгдээгүй байна.</p>
+            <p className="text-sm text-slate-500">Бараа нэмэгдээгүй байна.</p>
           ) : (
             <ul className="space-y-2">
               {items.map((it) => (
                 <li
                   key={it.id}
-                  className="flex items-center justify-between rounded-lg bg-neutral-800 px-3 py-2 text-sm"
+                  className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-sm"
                 >
                   <div>
                     <div className="font-medium">{it.product_name}</div>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-slate-400">
                       {it.quantity} × {formatMNT(it.unit_price ?? 0)}
                     </div>
                   </div>
@@ -268,7 +272,7 @@ export default function TableDetail({
                     </span>
                     <button
                       onClick={() => removeItem(it.id)}
-                      className="text-red-400 hover:text-red-300"
+                      className="text-rose-400 hover:text-rose-300"
                       aria-label="Устгах"
                     >
                       ✕
@@ -279,25 +283,25 @@ export default function TableDetail({
             </ul>
           )}
 
-          <div className="space-y-1 border-t border-neutral-800 pt-4 text-sm">
-            <div className="flex justify-between text-neutral-400">
+          <div className="space-y-1 border-t border-white/5 pt-4 text-sm">
+            <div className="flex justify-between text-slate-400">
               <span>Ширээ</span>
               <span>{formatMNT(tableCharge)}</span>
             </div>
-            <div className="flex justify-between text-neutral-400">
+            <div className="flex justify-between text-slate-400">
               <span>Бараа</span>
               <span>{formatMNT(itemsTotal)}</span>
             </div>
             <div className="flex justify-between pt-2 text-lg font-bold">
               <span>Нийт</span>
-              <span className="text-green-400">{formatMNT(grandTotal)}</span>
+              <span className="text-emerald-400">{formatMNT(grandTotal)}</span>
             </div>
           </div>
 
           {isActive && (
             <button
               onClick={() => setShowReceipt(true)}
-              className="w-full rounded-lg bg-green-600 py-3 font-semibold text-white transition hover:bg-green-500"
+              className="w-full rounded-lg bg-violet-600 py-3 font-semibold text-white transition hover:bg-violet-500"
             >
               Тооцоо хаах
             </button>
@@ -313,6 +317,7 @@ export default function TableDetail({
           tableCharge={tableCharge}
           itemsTotal={itemsTotal}
           grandTotal={grandTotal}
+          staffName={staffName}
           closing={closing}
           onConfirm={closeBill}
           onCancel={() => setShowReceipt(false)}

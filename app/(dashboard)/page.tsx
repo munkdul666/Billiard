@@ -4,61 +4,97 @@ import StatCard from "@/components/StatCard";
 import RevenueChart from "@/components/RevenueChart";
 import PopularProducts from "@/components/PopularProducts";
 import LiveStatus, { type Activity } from "@/components/LiveStatus";
+import LowStockAlert from "@/components/LowStockAlert";
 import { formatMNT } from "@/lib/format";
-import type { Session, SessionItem, Table } from "@/lib/types";
+import type { Product, Session, SessionItem, Table } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const DAY_LABELS = ["Ня", "Да", "Мя", "Лх", "Пү", "Ба", "Бя"];
+const LOW_STOCK = 5;
+const MAX_BARS = 30;
+
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
 
 export default async function HomePage() {
   const supabase = await createClient();
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const weekAgo = new Date(Date.now() - 6 * 86400000);
-  weekAgo.setHours(0, 0, 0, 0);
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
 
-  const [{ data: tablesData }, { data: weekSessions }, { data: weekItems }] =
-    await Promise.all([
-      supabase.from("tables").select("*").order("number"),
-      supabase
-        .from("sessions")
-        .select("*")
-        .eq("status", "closed")
-        .gte("ended_at", weekAgo.toISOString()),
-      supabase
-        .from("session_items")
-        .select("*")
-        .gte("created_at", weekAgo.toISOString()),
-    ]);
+  const [
+    { data: tablesData },
+    { data: closedSessions },
+    { data: recentItems },
+    { data: productsData },
+  ] = await Promise.all([
+    supabase.from("tables").select("*").order("number"),
+    supabase
+      .from("sessions")
+      .select("*")
+      .eq("status", "closed")
+      .order("ended_at", { ascending: false }),
+    supabase
+      .from("session_items")
+      .select("*")
+      .gte("created_at", monthAgo),
+    supabase.from("products").select("*").eq("is_active", true),
+  ]);
 
   const tables = (tablesData ?? []) as Table[];
-  const sessions = (weekSessions ?? []) as Session[];
-  const items = (weekItems ?? []) as SessionItem[];
+  const sessions = (closedSessions ?? []) as Session[];
+  const items = (recentItems ?? []) as SessionItem[];
+  const products = (productsData ?? []) as Product[];
 
-  // Өнөөдрийн орлого
+  const lowStock = products
+    .filter((p) => p.stock < LOW_STOCK)
+    .sort((a, b) => a.stock - b.stock);
+
   const todayRevenue = sessions
     .filter((s) => s.ended_at && new Date(s.ended_at) >= startOfToday)
     .reduce((sum, s) => sum + (s.total_amount ?? 0), 0);
 
+  const weekAgoMs = Date.now() - 7 * 86400000;
+  const weekSessions = sessions.filter(
+    (s) => s.ended_at && new Date(s.ended_at).getTime() >= weekAgoMs
+  );
+  const weekTotal = weekSessions.reduce((s, x) => s + (x.total_amount ?? 0), 0);
+
   const activeCount = tables.filter((t) => t.status === "occupied").length;
 
-  // 7 хоногийн орлого графикт
-  const buckets = new Map<string, number>();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekAgo.getTime() + i * 86400000);
-    buckets.set(d.toDateString(), 0);
-  }
+  // Орлогын график — ашиглаж эхэлснээс хойш өдрөөр
+  const dayMap = new Map<string, number>();
   for (const s of sessions) {
     if (!s.ended_at) continue;
-    const key = new Date(s.ended_at).toDateString();
-    if (buckets.has(key)) buckets.set(key, buckets.get(key)! + (s.total_amount ?? 0));
+    const key = ymd(new Date(s.ended_at));
+    dayMap.set(key, (dayMap.get(key) ?? 0) + (s.total_amount ?? 0));
   }
-  const chart = Array.from(buckets.entries()).map(([key, value]) => ({
-    label: DAY_LABELS[new Date(key).getDay()],
-    value,
-  }));
+  let firstDay: Date;
+  if (sessions.length > 0) {
+    const earliest = sessions.reduce((min, s) => {
+      const t = new Date(s.ended_at ?? s.started_at).getTime();
+      return t < min ? t : min;
+    }, Date.now());
+    firstDay = new Date(earliest);
+  } else {
+    firstDay = new Date();
+  }
+  firstDay.setHours(0, 0, 0, 0);
+  const totalDays =
+    Math.floor((startOfToday.getTime() - firstDay.getTime()) / 86400000) + 1;
+  const nDays = Math.min(MAX_BARS, Math.max(1, totalDays));
+  const chart: { label: string; value: number }[] = [];
+  for (let i = nDays - 1; i >= 0; i--) {
+    const d = new Date(startOfToday.getTime() - i * 86400000);
+    chart.push({
+      label: `${d.getMonth() + 1}/${d.getDate()}`,
+      value: dayMap.get(ymd(d)) ?? 0,
+    });
+  }
 
   // Их зарагдсан бараа
   const prodMap = new Map<string, number>();
@@ -71,27 +107,19 @@ export default async function HomePage() {
     .sort((a, b) => b.qty - a.qty)
     .slice(0, 5);
 
-  // Шууд төлөв (сүүлийн идэвх)
-  const activity: Activity[] = sessions
-    .slice()
-    .sort(
-      (a, b) =>
-        new Date(b.ended_at ?? b.started_at).getTime() -
-        new Date(a.ended_at ?? a.started_at).getTime()
-    )
-    .slice(0, 6)
-    .map((s) => {
-      const t = tables.find((x) => x.id === s.table_id);
-      return {
-        id: s.id,
-        table: t?.name ?? "Ширээ",
-        kind: "closed" as const,
-        amount: s.total_amount,
-        at: s.ended_at ?? s.started_at,
-      };
-    });
+  // Шууд төлөв
+  const activity: Activity[] = sessions.slice(0, 6).map((s) => {
+    const t = tables.find((x) => x.id === s.table_id);
+    return {
+      id: s.id,
+      table: t?.name ?? "Ширээ",
+      kind: "closed" as const,
+      amount: s.total_amount,
+      at: s.ended_at ?? s.started_at,
+    };
+  });
 
-  const weekTotal = sessions.reduce((s, x) => s + (x.total_amount ?? 0), 0);
+  const soldCount = items.reduce((s, i) => s + (i.quantity ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -102,39 +130,15 @@ export default async function HomePage() {
         </p>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Өнөөдрийн орлого"
-          value={formatMNT(todayRevenue)}
-          sub="хаагдсан тооцоонууд"
-          accent="violet"
-          icon="💰"
-        />
-        <StatCard
-          label="Идэвхтэй ширээ"
-          value={`${activeCount} / ${tables.length}`}
-          sub={`${Math.round((activeCount / Math.max(1, tables.length)) * 100)}% дүүргэлт`}
-          accent="emerald"
-          icon="🎱"
-        />
-        <StatCard
-          label="7 хоногийн орлого"
-          value={formatMNT(weekTotal)}
-          sub={`${sessions.length} тоглолт`}
-          accent="amber"
-          icon="📈"
-        />
-        <StatCard
-          label="Бараа зарагдсан"
-          value={`${items.reduce((s, i) => s + (i.quantity ?? 0), 0)} ш`}
-          sub="сүүлийн 7 хоног"
-          accent="sky"
-          icon="🍺"
-        />
+        <StatCard label="Өнөөдрийн орлого" value={formatMNT(todayRevenue)} sub="хаагдсан тооцоонууд" accent="violet" icon="💰" />
+        <StatCard label="Идэвхтэй ширээ" value={`${activeCount} / ${tables.length}`} sub={`${Math.round((activeCount / Math.max(1, tables.length)) * 100)}% дүүргэлт`} accent="emerald" icon="🎱" />
+        <StatCard label="7 хоногийн орлого" value={formatMNT(weekTotal)} sub={`${weekSessions.length} тоглолт`} accent="amber" icon="📈" />
+        <StatCard label="Бараа зарагдсан" value={`${soldCount} ш`} sub="сүүлийн 30 хоног" accent="sky" icon="🍺" />
       </div>
 
-      {/* Table overview */}
+      <LowStockAlert items={lowStock} />
+
       <div className="card p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-semibold">Ширээний харагдац</h2>
@@ -143,15 +147,13 @@ export default async function HomePage() {
         <TablesGrid initialTables={tables} />
       </div>
 
-      {/* Bottom widgets */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <RevenueChart data={chart} />
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <LiveStatus items={activity} />
+        <PopularProducts items={popular} />
       </div>
 
-      <PopularProducts items={popular} />
+      {/* Орлогын график — хамгийн доор, эхэлснээс хойш өдрөөр */}
+      <RevenueChart data={chart} />
     </div>
   );
 }
