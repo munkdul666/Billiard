@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Session, Table } from "@/lib/types";
-import { generateTableColor } from "@/lib/colors";
 import {
   calcCharge,
   elapsedSeconds,
@@ -11,12 +10,12 @@ import {
   formatMNT,
   remainingSeconds,
 } from "@/lib/format";
-import TableSVG from "./TableSVG";
+import PoolTableSVG from "./PoolTableSVG";
 
 const STATUS = {
-  free: { label: "Чөлөөтэй", dot: "🟢", ring: "ring-green-600/40" },
-  occupied: { label: "Тоглож байна", dot: "🔴", ring: "ring-red-600/50" },
-  reserved: { label: "Захиалгатай", dot: "🟡", ring: "ring-yellow-500/40" },
+  free: { label: "Чөлөөтэй", text: "text-emerald-400", felt: "#15803d" },
+  occupied: { label: "Тоглож байна", text: "text-violet-400", felt: "#166534" },
+  reserved: { label: "Захиалгатай", text: "text-rose-400", felt: "#7f1d1d" },
 } as const;
 
 export default function TableCard({
@@ -31,12 +30,10 @@ export default function TableCard({
   const supabase = createClient();
   const isOccupied = table.status === "occupied" && !!table.started_at;
   const status = STATUS[table.status] ?? STATUS.free;
-  const gradient = generateTableColor(table.number);
 
   const [session, setSession] = useState<Session | null>(null);
   const [, setTick] = useState(0);
 
-  // Идэвхтэй сессийн горим (open/fixed)-ийг авах
   useEffect(() => {
     let active = true;
     if (isOccupied && table.current_session_id) {
@@ -57,7 +54,6 @@ export default function TableCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOccupied, table.current_session_id]);
 
-  // Тоолуурыг секунд тутам шинэчлэх
   useEffect(() => {
     if (!isOccupied) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -73,84 +69,82 @@ export default function TableCard({
         session?.planned_minutes ?? null
       )
     : 0;
-
-  const isFixed = session?.billing_mode === "fixed" && session?.planned_minutes;
+  const isFixed = session?.billing_mode === "fixed" && !!session?.planned_minutes;
   const remaining = isFixed
     ? remainingSeconds(table.started_at!, session!.planned_minutes!)
     : 0;
   const overtime = isFixed && remaining < 0;
 
   return (
-    <div
-      className={`relative overflow-hidden rounded-2xl border border-neutral-800 bg-gradient-to-br ${gradient} p-5 shadow-lg ring-1 ${status.ring}`}
-    >
-      <TableSVG className="pointer-events-none absolute -right-6 -top-4 h-28 w-44 opacity-20" />
-
-      <div className="relative">
-        <div className="flex items-start justify-between">
-          <div className="text-5xl font-black leading-none">
-            {table.number}
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="rounded-full bg-black/30 px-2.5 py-1 text-xs font-medium">
-              {status.dot} {status.label}
-            </span>
+    <div className="card overflow-hidden p-4 transition hover:border-violet-500/30">
+      <div className="mb-3 flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold">{table.name}</h3>
             {table.is_vip && (
-              <span className="rounded-full bg-yellow-400/90 px-2.5 py-0.5 text-xs font-bold text-yellow-950">
+              <span className="rounded-md bg-yellow-400/90 px-1.5 py-0.5 text-[10px] font-bold text-yellow-950">
                 ⭐ VIP
               </span>
             )}
           </div>
-        </div>
-
-        <div className="mt-1 text-sm text-white/70">{table.name}</div>
-
-        {isOccupied ? (
-          <div className="mt-4 space-y-1">
-            <div className="tabular text-3xl font-bold">
-              {formatDuration(seconds)}
-            </div>
-            {isFixed && (
-              <div
-                className={`text-sm font-semibold ${
-                  overtime ? "text-red-200" : "text-white/90"
-                }`}
-              >
-                {overtime ? "⚠️ Хэтэрсэн: " : "Үлдсэн: "}
-                {formatDuration(Math.abs(remaining))}
-                <span className="ml-1 text-xs font-normal text-white/60">
-                  ({session!.planned_minutes! / 60}ц багц)
-                </span>
-              </div>
-            )}
-            <div className="text-sm text-white/80">
-              Тооцоо: <span className="font-semibold">{formatMNT(charge)}</span>
-            </div>
+          <div className={`text-xs font-medium ${status.text}`}>
+            ● {status.label}
           </div>
-        ) : (
-          <div className="mt-4 text-sm text-white/60">
-            Цагийн тариф: {formatMNT(table.hourly_rate)}/цаг
+        </div>
+        <span className="text-2xl font-black text-white/10">{table.number}</span>
+      </div>
+
+      <div className="relative mb-3 overflow-hidden rounded-xl">
+        <PoolTableSVG className="h-28 w-full" felt={status.felt} />
+        {isOccupied && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-1.5">
+            <span className="tabular text-sm font-bold text-white">
+              {formatDuration(seconds)}
+            </span>
           </div>
         )}
-
-        <div className="mt-5 flex gap-2">
-          {isOccupied ? (
-            <button
-              onClick={onOpen}
-              className="flex-1 rounded-lg bg-white/90 py-2.5 font-semibold text-neutral-900 transition hover:bg-white"
-            >
-              Дэлгэрэнгүй / Дуусгах
-            </button>
-          ) : (
-            <button
-              onClick={onStart}
-              className="flex-1 rounded-lg bg-white/90 py-2.5 font-semibold text-neutral-900 transition hover:bg-white"
-            >
-              Эхлүүлэх
-            </button>
-          )}
-        </div>
       </div>
+
+      {isOccupied ? (
+        <div className="space-y-1 text-sm">
+          {isFixed && (
+            <div className={overtime ? "text-rose-400" : "text-slate-300"}>
+              {overtime ? "⚠️ Хэтэрсэн " : "Үлдсэн "}
+              <span className="font-semibold">
+                {formatDuration(Math.abs(remaining))}
+              </span>
+              <span className="ml-1 text-xs text-slate-500">
+                ({session!.planned_minutes! / 60}ц багц)
+              </span>
+            </div>
+          )}
+          <div className="text-slate-400">
+            Тооцоо:{" "}
+            <span className="font-semibold text-emerald-400">
+              {formatMNT(charge)}
+            </span>
+          </div>
+          <button
+            onClick={onOpen}
+            className="mt-2 w-full rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white transition hover:bg-violet-500"
+          >
+            Дэлгэрэнгүй / Дуусгах
+          </button>
+        </div>
+      ) : (
+        <div className="text-sm">
+          <div className="text-slate-400">
+            {formatMNT(table.hourly_rate)}
+            <span className="text-slate-500"> /цаг</span>
+          </div>
+          <button
+            onClick={onStart}
+            className="mt-2 w-full rounded-lg border border-violet-500/40 bg-violet-600/10 py-2 text-sm font-semibold text-violet-300 transition hover:bg-violet-600/20"
+          >
+            Эхлүүлэх
+          </button>
+        </div>
+      )}
     </div>
   );
 }
