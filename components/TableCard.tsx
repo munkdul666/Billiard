@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Table } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import type { Session, Table } from "@/lib/types";
 import { generateTableColor } from "@/lib/colors";
 import {
-  calcTableCharge,
+  calcCharge,
   elapsedSeconds,
   formatDuration,
   formatMNT,
+  remainingSeconds,
 } from "@/lib/format";
 import TableSVG from "./TableSVG";
 
@@ -26,13 +28,36 @@ export default function TableCard({
   onStart: () => void;
   onOpen: () => void;
 }) {
-  const isOccupied = table.status === "occupied" && table.started_at;
+  const supabase = createClient();
+  const isOccupied = table.status === "occupied" && !!table.started_at;
   const status = STATUS[table.status] ?? STATUS.free;
   const gradient = generateTableColor(table.number);
 
+  const [session, setSession] = useState<Session | null>(null);
   const [, setTick] = useState(0);
 
-  // Тоглож байгаа ширээний тоолуурыг секунд тутам шинэчилнэ
+  // Идэвхтэй сессийн горим (open/fixed)-ийг авах
+  useEffect(() => {
+    let active = true;
+    if (isOccupied && table.current_session_id) {
+      supabase
+        .from("sessions")
+        .select("*")
+        .eq("id", table.current_session_id)
+        .single()
+        .then(({ data }) => {
+          if (active) setSession(data as Session | null);
+        });
+    } else {
+      setSession(null);
+    }
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOccupied, table.current_session_id]);
+
+  // Тоолуурыг секунд тутам шинэчлэх
   useEffect(() => {
     if (!isOccupied) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -41,8 +66,19 @@ export default function TableCard({
 
   const seconds = isOccupied ? elapsedSeconds(table.started_at!) : 0;
   const charge = isOccupied
-    ? calcTableCharge(table.started_at!, table.hourly_rate)
+    ? calcCharge(
+        table.started_at!,
+        table.hourly_rate,
+        session?.billing_mode ?? "open",
+        session?.planned_minutes ?? null
+      )
     : 0;
+
+  const isFixed = session?.billing_mode === "fixed" && session?.planned_minutes;
+  const remaining = isFixed
+    ? remainingSeconds(table.started_at!, session!.planned_minutes!)
+    : 0;
+  const overtime = isFixed && remaining < 0;
 
   return (
     <div
@@ -55,9 +91,16 @@ export default function TableCard({
           <div className="text-5xl font-black leading-none">
             {table.number}
           </div>
-          <span className="rounded-full bg-black/30 px-2.5 py-1 text-xs font-medium">
-            {status.dot} {status.label}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="rounded-full bg-black/30 px-2.5 py-1 text-xs font-medium">
+              {status.dot} {status.label}
+            </span>
+            {table.is_vip && (
+              <span className="rounded-full bg-yellow-400/90 px-2.5 py-0.5 text-xs font-bold text-yellow-950">
+                ⭐ VIP
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="mt-1 text-sm text-white/70">{table.name}</div>
@@ -67,9 +110,21 @@ export default function TableCard({
             <div className="tabular text-3xl font-bold">
               {formatDuration(seconds)}
             </div>
+            {isFixed && (
+              <div
+                className={`text-sm font-semibold ${
+                  overtime ? "text-red-200" : "text-white/90"
+                }`}
+              >
+                {overtime ? "⚠️ Хэтэрсэн: " : "Үлдсэн: "}
+                {formatDuration(Math.abs(remaining))}
+                <span className="ml-1 text-xs font-normal text-white/60">
+                  ({session!.planned_minutes! / 60}ц багц)
+                </span>
+              </div>
+            )}
             <div className="text-sm text-white/80">
-              Одоогийн тооцоо:{" "}
-              <span className="font-semibold">{formatMNT(charge)}</span>
+              Тооцоо: <span className="font-semibold">{formatMNT(charge)}</span>
             </div>
           </div>
         ) : (

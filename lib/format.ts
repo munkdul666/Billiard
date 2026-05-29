@@ -1,3 +1,5 @@
+import type { BillingMode } from "./types";
+
 // Мөнгөн дүн ₮ форматлах
 export function formatMNT(amount: number): string {
   return new Intl.NumberFormat("mn-MN").format(Math.round(amount)) + "₮";
@@ -5,21 +7,43 @@ export function formatMNT(amount: number): string {
 
 // Секундийг HH:MM:SS болгох
 export function formatDuration(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
+  const neg = totalSeconds < 0;
+  const s = Math.abs(Math.floor(totalSeconds));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
-}
-
-// Эхэлсэн цагнаас хойших ширээний цэнэ (тариф нь цагийн үнэ)
-export function calcTableCharge(startedAt: string, hourlyRate: number): number {
-  const elapsedMs = Date.now() - new Date(startedAt).getTime();
-  const hours = elapsedMs / 1000 / 3600;
-  return hours * hourlyRate;
+  return `${neg ? "-" : ""}${pad(h)}:${pad(m)}:${pad(sec)}`;
 }
 
 export function elapsedSeconds(startedAt: string): number {
   return (Date.now() - new Date(startedAt).getTime()) / 1000;
+}
+
+// Ширээний цэнэ. open: өнгөрсөн цаг × тариф.
+// fixed: тогтсон цаг × тариф (суурь), хэтэрвэл илүү цагийг нэмж тооцно.
+export function calcCharge(
+  startedAt: string,
+  hourlyRate: number,
+  billingMode: BillingMode = "open",
+  plannedMinutes: number | null = null
+): number {
+  const elapsedHours = elapsedSeconds(startedAt) / 3600;
+
+  if (billingMode === "fixed" && plannedMinutes) {
+    const plannedHours = plannedMinutes / 60;
+    const base = plannedHours * hourlyRate;
+    const overtimeHours = Math.max(0, elapsedHours - plannedHours);
+    return base + overtimeHours * hourlyRate;
+  }
+
+  return elapsedHours * hourlyRate;
+}
+
+// fixed багцад үлдсэн секунд (сөрөг бол хэтэрсэн = overtime)
+export function remainingSeconds(
+  startedAt: string,
+  plannedMinutes: number
+): number {
+  return plannedMinutes * 60 - elapsedSeconds(startedAt);
 }

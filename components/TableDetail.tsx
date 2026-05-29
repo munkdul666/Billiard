@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Product, Session, SessionItem, Table } from "@/lib/types";
 import {
-  calcTableCharge,
+  calcCharge,
   elapsedSeconds,
   formatDuration,
   formatMNT,
+  remainingSeconds,
 } from "@/lib/format";
 import ReceiptModal from "./ReceiptModal";
 
@@ -27,7 +28,7 @@ export default function TableDetail({
   const router = useRouter();
   const supabase = createClient();
 
-  const [session, setSession] = useState<Session | null>(initialSession);
+  const [session] = useState<Session | null>(initialSession);
   const [items, setItems] = useState<SessionItem[]>(initialItems);
   const [selectedProduct, setSelectedProduct] = useState<string>(
     products[0]?.id ?? ""
@@ -38,6 +39,8 @@ export default function TableDetail({
   const [closing, setClosing] = useState(false);
 
   const isActive = session?.status === "active";
+  const isFixed =
+    session?.billing_mode === "fixed" && !!session?.planned_minutes;
 
   // Live timer
   useEffect(() => {
@@ -48,13 +51,24 @@ export default function TableDetail({
 
   const seconds = session ? elapsedSeconds(session.started_at) : 0;
   const tableCharge = session
-    ? calcTableCharge(session.started_at, table.hourly_rate)
+    ? calcCharge(
+        session.started_at,
+        table.hourly_rate,
+        session.billing_mode ?? "open",
+        session.planned_minutes ?? null
+      )
     : 0;
   const itemsTotal = useMemo(
     () => items.reduce((sum, it) => sum + (it.total_price ?? 0), 0),
     [items]
   );
   const grandTotal = tableCharge + itemsTotal;
+
+  const remaining =
+    isFixed && session
+      ? remainingSeconds(session.started_at, session.planned_minutes!)
+      : 0;
+  const overtime = isFixed && remaining < 0;
 
   async function addItem() {
     if (!session || !selectedProduct) return;
@@ -95,17 +109,15 @@ export default function TableDetail({
 
     const endedAt = new Date().toISOString();
     const durationMinutes = Math.round(seconds / 60);
-    const finalCharge = Math.round(tableCharge);
-    const finalTotal = Math.round(grandTotal);
 
     await supabase
       .from("sessions")
       .update({
         ended_at: endedAt,
         duration_minutes: durationMinutes,
-        table_charge: finalCharge,
+        table_charge: Math.round(tableCharge),
         items_total: Math.round(itemsTotal),
-        total_amount: finalTotal,
+        total_amount: Math.round(grandTotal),
         status: "closed",
       })
       .eq("id", session.id);
@@ -133,14 +145,23 @@ export default function TableDetail({
       </Link>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Зүүн тал — тоолуур + бараа нэмэх */}
+        {/* Зүүн тал */}
         <div className="space-y-6">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-bold">{table.name}</h1>
+                <h1 className="flex items-center gap-2 text-xl font-bold">
+                  {table.name}
+                  {table.is_vip && (
+                    <span className="rounded-full bg-yellow-400/90 px-2 py-0.5 text-xs font-bold text-yellow-950">
+                      ⭐ VIP
+                    </span>
+                  )}
+                </h1>
                 <p className="text-sm text-neutral-400">
                   Тариф: {formatMNT(table.hourly_rate)}/цаг
+                  {isFixed &&
+                    ` · ${session!.planned_minutes! / 60} цагийн багц`}
                 </p>
               </div>
               <span className="text-5xl font-black text-neutral-700">
@@ -155,6 +176,16 @@ export default function TableDetail({
                   <div className="tabular mt-1 text-3xl font-bold">
                     {formatDuration(seconds)}
                   </div>
+                  {isFixed && (
+                    <div
+                      className={`mt-1 text-sm font-semibold ${
+                        overtime ? "text-red-400" : "text-neutral-300"
+                      }`}
+                    >
+                      {overtime ? "⚠️ Хэтэрсэн " : "Үлдсэн "}
+                      {formatDuration(Math.abs(remaining))}
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-xl bg-neutral-800 p-4">
                   <div className="text-xs text-neutral-400">Ширээний цэнэ</div>
@@ -167,6 +198,13 @@ export default function TableDetail({
               <p className="mt-6 rounded-xl bg-neutral-800 p-4 text-sm text-neutral-400">
                 Энэ ширээ идэвхтэй сесстэй биш байна.
               </p>
+            )}
+
+            {overtime && (
+              <div className="mt-4 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">
+                ⚠️ Захиалсан цаг дууссан. Тоолуур үргэлжилж, илүү цагийг тарифаар
+                нэмж тооцож байна.
+              </div>
             )}
           </div>
 
@@ -205,7 +243,7 @@ export default function TableDetail({
           )}
         </div>
 
-        {/* Баруун тал — захиалгын жагсаалт + нийт */}
+        {/* Баруун тал */}
         <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-6">
           <h2 className="font-semibold">Захиалга</h2>
 
