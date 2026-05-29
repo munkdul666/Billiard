@@ -18,7 +18,7 @@ export default function TablesGrid({
   const [startTarget, setStartTarget] = useState<Table | null>(null);
   const [starting, setStarting] = useState(false);
 
-  // Realtime: аль ч browser-т ширээ өөрчлөгдөхөд энд шинэчлэгдэнэ
+  // Realtime: any browser change reflects here
   useEffect(() => {
     const channel = supabase
       .channel("tables-changes")
@@ -59,6 +59,7 @@ export default function TablesGrid({
         status: "active",
         billing_mode: choice.billingMode,
         planned_minutes: choice.plannedMinutes,
+        staff_id: choice.staffId,
       })
       .select()
       .single();

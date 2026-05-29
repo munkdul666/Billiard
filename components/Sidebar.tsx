@@ -6,7 +6,6 @@ import {
   IconDashboard,
   IconTables,
   IconCalendar,
-  IconUsers,
   IconStaff,
   IconTransactions,
   IconInventory,
@@ -18,7 +17,6 @@ const NAV = [
   { href: "/", label: "Хяналтын самбар", Icon: IconDashboard },
   { href: "/tables", label: "Ширээнүүд", Icon: IconTables },
   { href: "/reservations", label: "Захиалга", Icon: IconCalendar },
-  { href: "/customers", label: "Харилцагч", Icon: IconUsers },
   { href: "/staff", label: "Ажилтан", Icon: IconStaff },
   { href: "/transactions", label: "Гүйлгээ", Icon: IconTransactions },
   { href: "/products", label: "Агуулах", Icon: IconInventory },
@@ -70,7 +68,7 @@ export default function Sidebar({ email }: { email: string }) {
         </div>
         <div className="text-sm font-semibold">VIP ширээ идэвхтэй</div>
         <div className="mt-1 text-xs text-slate-400">
-          Премиум тариф 15,000₮/цаг
+          Премиум тариф settings-с тохируулна
         </div>
       </div>
 

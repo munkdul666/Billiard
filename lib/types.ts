@@ -25,9 +25,20 @@ export interface Product {
   created_at: string;
 }
 
+export interface Staff {
+  id: string;
+  name: string;
+  role: string;
+  phone: string | null;
+  is_active: boolean;
+  on_shift: boolean;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   table_id: string;
+  staff_id: string | null;
   started_at: string;
   ended_at: string | null;
   duration_minutes: number | null;
